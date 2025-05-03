@@ -1,0 +1,68 @@
+import secrets
+import hashlib
+import hmac
+
+# BIP39 ইংরেজি ওয়ার্ডলিস্ট
+with open('english.txt', 'r') as f:
+    wordlist = [word.strip() for word in f.readlines()]
+
+def generate_entropy(strength=128):
+    """এনট্রপি জেনারেট করে (128, 160, 192, 224, বা 256 বিট)"""
+    if strength not in [128, 160, 192, 224, 256]:
+        raise ValueError("শক্তিমান অবশ্যই 128, 160, 192, 224, বা 256 হতে হবে")
+    return secrets.token_bytes(strength // 8)
+
+def entropy_to_mnemonic(entropy):
+    """এনট্রপি থেকে মেমোনিক সিড ফ্রেজে রূপান্তর"""
+    entropy_length = len(entropy) * 8
+    checksum_length = entropy_length // 32
+    checksum = hashlib.sha256(entropy).digest()
+    checksum_bits = bin(int.from_bytes(checksum, 'big'))[2:].zfill(256)[:checksum_length]
+    
+    entropy_bits = bin(int.from_bytes(entropy, 'big'))[2:].zfill(entropy_length)
+    combined_bits = entropy_bits + checksum_bits
+    
+    indices = [
+        int(combined_bits[i*11:(i+1)*11], 2)
+        for i in range(len(combined_bits) // 11)
+    ]
+    
+    return ' '.join([wordlist[i] for i in indices])
+
+def validate_mnemonic(mnemonic):
+    """মেমোনিক সিড ফ্রেজ ভ্যালিডেট করে"""
+    words = mnemonic.split()
+    if len(words) not in [12, 15, 18, 21, 24]:
+        return False
+    
+    try:
+        indices = [wordlist.index(word) for word in words]
+    except ValueError:
+        return False
+    
+    checksum_length = len(words) // 3
+    entropy_length = len(words) * 11 - checksum_length
+    
+    combined_bits = ''.join([bin(i)[2:].zfill(11) for i in indices])
+    entropy_bits = combined_bits[:entropy_length]
+    checksum_bits = combined_bits[entropy_length:]
+    
+    entropy = int(entropy_bits, 2).to_bytes(entropy_length // 8, 'big')
+    checksum = hashlib.sha256(entropy).digest()
+    checksum_calc = bin(int.from_bytes(checksum, 'big'))[2:].zfill(256)[:checksum_length]
+    
+    return checksum_bits == checksum_calc
+
+# ব্যবহার উদাহরণ
+if __name__ == "__main__":
+    print("1. 12 শব্দের সিড ফ্রেজ (128-bit)")
+    entropy = generate_entropy(128)
+    mnemonic = entropy_to_mnemonic(entropy)
+    print(mnemonic)
+    
+    print("\n2. 24 শব্দের সিড ফ্রেজ (256-bit)")
+    entropy = generate_entropy(256)
+    mnemonic = entropy_to_mnemonic(entropy)
+    print(mnemonic)
+    
+    print("\nভ্যালিডেশন:", validate_mnemonic(mnemonic))
